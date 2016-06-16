@@ -15,7 +15,6 @@ Pod::Spec.new do |s|
   s.ios.deployment_target = '7.0'
 
   s.source_files = "HTY360Player/HTYGLKVC.{h,m}","HTY360Player/GLProgram.{h,m}","HTY360Player/HTY360PlayerVC.{h,m}"
-  s.resource = 'HTY360Player/HTY360PlayerVC.xib', 'HTY360Player/Assets.xcassets', 'HTY360Player/Shader.{fsh,vsh}'
   s.frameworks = 'AVFoundation','GLKit','CoreMotion'
   
 end
