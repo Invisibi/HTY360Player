@@ -10,8 +10,9 @@
 #import <GLKit/GLKit.h>
 @class HTY360PlayerVC;
 
-@interface HTYGLKVC : GLKViewController<UIGestureRecognizerDelegate>
+@interface HTYGLKVC : GLKViewController <UIGestureRecognizerDelegate>
 
+@property (nonatomic, strong) GLKView *view;
 @property (strong, nonatomic, readwrite) HTY360PlayerVC* videoPlayerController;
 @property (assign, nonatomic, readonly) BOOL isUsingMotion;
 
