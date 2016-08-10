@@ -387,17 +387,13 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
                 _referenceAttitude = d.attitude;
             }
             
-//            float cRoll = -fabs(attitude.roll); // Up/Down en landscape
-            float cRoll = attitude.roll;
+            float cRoll = -fabs(attitude.roll); // Up/Down en landscape
             float cYaw = attitude.yaw;  // Left/ Right en landscape -> pas besoin de prendre l'opposé
             float cPitch = attitude.pitch; // Depth en landscape -> pas besoin de prendre l'opposé
             
             UIDeviceOrientation orientation = [[UIDevice currentDevice] orientation];
             if (orientation == UIDeviceOrientationLandscapeRight ){
                 cPitch = cPitch*-1; // correct depth when in landscape right
-            }
-            else if (orientation == UIDeviceOrientationPortrait ){
-                cPitch = cPitch*-1; // correct depth when in portrait
             }
             
             if (YES) {
