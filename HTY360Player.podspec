@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = "HTY360Player"
-  s.version          = "0.1.0"
+  s.version          = "0.1.1"
   s.summary          = "全景视频播放"
 
   s.description      = <<-DESC
