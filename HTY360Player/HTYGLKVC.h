@@ -18,5 +18,6 @@
 
 - (void)startDeviceMotion;
 - (void)stopDeviceMotion;
+- (void)reAnchorToDegree:(float)degree;
 
 @end

@@ -40,26 +40,29 @@ GLint uniforms[NUM_UNIFORMS];
 
 
 @interface HTYGLKVC () {
-    
+
     GLKMatrix4 _modelViewProjectionMatrix;
-    
+
     GLuint _vertexArrayID;
     GLuint _vertexBufferID;
     GLuint _vertexIndicesBufferID;
     GLuint _vertexTexCoordID;
     GLuint _vertexTexCoordAttributeIndex;
-    
+
     float _fingerRotationX;
     float _fingerRotationY;
     float _savedGyroRotationX;
     float _savedGyroRotationY;
+    float currentYaw;
+    float deltaYaw;
+    float deltaFinger;
     CGFloat _overture;
-    
+
     int _numIndices;
-    
+
     CMMotionManager *_motionManager;
     CMAttitude *_referenceAttitude;
-    
+
     CVOpenGLESTextureRef _lumaTexture;
     CVOpenGLESTextureRef _chromaTexture;
     CVOpenGLESTextureCacheRef _videoTextureCache;
@@ -80,38 +83,46 @@ GLint uniforms[NUM_UNIFORMS];
 
 @dynamic view;
 
+- (void)reAnchorToDegree:(float)degree {
+    deltaYaw = currentYaw - degree * M_PI / 180;
+    deltaFinger = _fingerRotationY;
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
-    
+
     self.context = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
-    
+
     if (!self.context) {
         NSLog(@"Failed to create ES context");
     }
-    
+
     GLKView *view = (GLKView *)self.view;
     view.context = self.context;
     view.drawableDepthFormat = GLKViewDrawableDepthFormat24;
-    
+
     [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(detectOrientation) name:UIDeviceOrientationDidChangeNotification object:nil];
-    
+
     UIPinchGestureRecognizer *pinchRecognizer = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(handlePinchGesture:)];
     [view addGestureRecognizer:pinchRecognizer];
-    
+
     UITapGestureRecognizer *singleTapRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleSingleTapGesture:)];
     singleTapRecognizer.numberOfTapsRequired = 1;
     [view addGestureRecognizer:singleTapRecognizer];
-    
+
     self.preferredFramesPerSecond = 30.0f;
-    
+
     _overture = DEFAULT_OVERTURE;
-    
+
+    deltaYaw = 0;
+    deltaFinger = 0;
+
     // Set the default conversion to BT.709, which is the standard for HDTV.
     _preferredConversion = kColorConversion709;
-    
+
     [self setupGL];
-    
+
     [self startDeviceMotion];
 }
 
@@ -125,32 +136,32 @@ GLint uniforms[NUM_UNIFORMS];
 
 - (void)dealloc {
     [self stopDeviceMotion];
-    
+
     [self.view deleteDrawable];
-    
+
     [self tearDownGL];
-    
+
     if ([EAGLContext currentContext] == self.context) {
         [EAGLContext setCurrentContext:nil];
     }
-    
+
     self.context = nil;
 }
 
 - (void)didReceiveMemoryWarning {
     [super didReceiveMemoryWarning];
-    
+
     if ([self isViewLoaded] && ([[self view] window] == nil)) {
         self.view = nil;
-        
+
         [self tearDownGL];
-        
+
         if ([EAGLContext currentContext] == self.context) {
             [EAGLContext setCurrentContext:nil];
         }
         self.context = nil;
     }
-    
+
     // Dispose of any resources that can be recreated.
 }
 
@@ -164,24 +175,24 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
     int numVertices = ( numParallels + 1 ) * ( numSlices + 1 );
     int numIndices = numParallels * numSlices * 6;
     float angleStep = (2.0f * ES_PI) / ((float) numSlices);
-    
+
     if ( vertices != NULL )
         *vertices = (float*)malloc ( sizeof(float) * 3 * numVertices );
-    
+
     // Pas besoin des normals pour l'instant
     //    if ( normals != NULL )
     //        *normals = malloc ( sizeof(float) * 3 * numVertices );
-    
+
     if ( texCoords != NULL )
         *texCoords = (float*)malloc ( sizeof(float) * 2 * numVertices );
-    
+
     if ( indices != NULL )
         *indices = (uint16_t*)malloc ( sizeof(uint16_t) * numIndices );
-    
+
     for ( i = 0; i < numParallels + 1; i++ ) {
         for ( j = 0; j < numSlices + 1; j++ ) {
             int vertex = ( i * (numSlices + 1) + j ) * 3;
-            
+
             if ( vertices ) {
                 (*vertices)[vertex + 0] = radius * sinf ( angleStep * (float)i ) *
                 sinf ( angleStep * (float)j );
@@ -189,14 +200,14 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
                 (*vertices)[vertex + 2] = radius * sinf ( angleStep * (float)i ) *
                 cosf ( angleStep * (float)j );
             }
-            
+
             //            if ( normals )
             //            {
             //                (*normals)[vertex + 0] = (*vertices)[vertex + 0] / radius;
             //                (*normals)[vertex + 1] = (*vertices)[vertex + 1] / radius;
             //                (*normals)[vertex + 2] = (*vertices)[vertex + 2] / radius;
             //            }
-            
+
             if (texCoords) {
                 int texIndex = ( i * (numSlices + 1) + j ) * 2;
                 (*texCoords)[texIndex + 0] = (float) j / (float) numSlices;
@@ -204,7 +215,7 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
             }
         }
     }
-    
+
     // Generate the indices
     if ( indices != NULL ) {
         uint16_t *indexBuf = (*indices);
@@ -213,18 +224,18 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
                 *indexBuf++  = i * ( numSlices + 1 ) + j;
                 *indexBuf++ = ( i + 1 ) * ( numSlices + 1 ) + j;
                 *indexBuf++ = ( i + 1 ) * ( numSlices + 1 ) + ( j + 1 );
-                
+
                 *indexBuf++ = i * ( numSlices + 1 ) + j;
                 *indexBuf++ = ( i + 1 ) * ( numSlices + 1 ) + ( j + 1 );
                 *indexBuf++ = i * ( numSlices + 1 ) + ( j + 1 );
             }
         }
     }
-    
+
     if (numVertices_out) {
         *numVertices_out = numVertices;
     }
-    
+
     return numIndices;
 }
 
@@ -232,19 +243,19 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
 
 - (void)setupGL {
     [EAGLContext setCurrentContext:self.context];
-    
+
     [self buildProgram];
-    
+
     GLfloat *vVertices = NULL;
     GLfloat *vTextCoord = NULL;
     GLushort *indices = NULL;
     int numVertices = 0;
     _numIndices =  esGenSphere(200, 1.0f, &vVertices,  NULL,
                                &vTextCoord, &indices, &numVertices);
-    
+
     glGenVertexArraysOES(1, &_vertexArrayID);
     glBindVertexArrayOES(_vertexArrayID);
-    
+
     // Vertex
     glGenBuffers(1, &_vertexBufferID);
     glBindBuffer(GL_ARRAY_BUFFER, _vertexBufferID);
@@ -259,7 +270,7 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
                           GL_FALSE,
                           sizeof(GLfloat) * 3,
                           NULL);
-    
+
     // Texture Coordinates
     glGenBuffers(1, &_vertexTexCoordID);
     glBindBuffer(GL_ARRAY_BUFFER, _vertexTexCoordID);
@@ -274,15 +285,15 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
                           GL_FALSE,
                           sizeof(GLfloat) * 2,
                           NULL);
-    
+
     //Indices
     glGenBuffers(1, &_vertexIndicesBufferID);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _vertexIndicesBufferID);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER,
                  sizeof(GLushort) * _numIndices,
                  indices, GL_STATIC_DRAW);
-    
-    
+
+
     if (!_videoTextureCache) {
         CVReturn err = CVOpenGLESTextureCacheCreate(kCFAllocatorDefault, NULL, _context, NULL, &_videoTextureCache);
         if (err != noErr) {
@@ -290,12 +301,12 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
             return;
         }
     }
-    
+
     [_program use];
     glUniform1i(uniforms[UNIFORM_Y], 0);
     glUniform1i(uniforms[UNIFORM_UV], 1);
     glUniformMatrix3fv(uniforms[UNIFORM_COLOR_CONVERSION_MATRIX], 1, GL_FALSE, _preferredConversion);
-    
+
     free(vVertices);
     free(vTextCoord);
     free(indices);
@@ -303,15 +314,15 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
 
 - (void)tearDownGL {
     [EAGLContext setCurrentContext:self.context];
-    
+
     [self cleanUpTextures];
-    
+
     glDeleteBuffers(1, &_vertexBufferID);
     glDeleteVertexArraysOES(1, &_vertexArrayID);
     glDeleteBuffers(1, &_vertexTexCoordID);
-    
+
     _program = nil;
-    
+
     if (_videoTextureCache)
     {
         CFRelease(_videoTextureCache);
@@ -326,12 +337,12 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
         CFRelease(_lumaTexture);
         _lumaTexture = NULL;
     }
-    
+
     if (_chromaTexture) {
         CFRelease(_chromaTexture);
         _chromaTexture = NULL;
     }
-    
+
     // Periodic texture cache flush every frame
     CVOpenGLESTextureCacheFlush(_videoTextureCache, 0);
 }
@@ -340,27 +351,27 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
 
 - (void)startDeviceMotion {
     _isUsingMotion = NO;
-    
+
     _motionManager = [[CMMotionManager alloc] init];
     _referenceAttitude = nil;
     _motionManager.deviceMotionUpdateInterval = 1.0 / 60.0;
     _motionManager.gyroUpdateInterval = 1.0f / 60;
     _motionManager.showsDeviceMovementDisplay = YES;
-    
+
     [_motionManager startDeviceMotionUpdatesUsingReferenceFrame:CMAttitudeReferenceFrameXArbitraryCorrectedZVertical];
-    
+
     _referenceAttitude = _motionManager.deviceMotion.attitude; // Maybe nil actually. reset it later when we have data
-    
+
     _savedGyroRotationX = 0;
     _savedGyroRotationY = 0;
-    
+
     //_isUsingMotion = YES;
 }
 
 - (void)stopDeviceMotion {
     _fingerRotationX = _savedGyroRotationX-_referenceAttitude.roll- ROLL_CORRECTION;
     _fingerRotationY = _savedGyroRotationY;
-    
+
     _isUsingMotion = NO;
     [_motionManager stopDeviceMotionUpdates];
     _motionManager = nil;
@@ -371,107 +382,61 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
 - (void)update {
     float aspect = fabs(self.view.bounds.size.width / self.view.bounds.size.height);
     GLKMatrix4 projectionMatrix = GLKMatrix4MakePerspective(GLKMathDegreesToRadians(_overture), aspect, 0.1f, 400.0f);
-    projectionMatrix = GLKMatrix4Rotate(projectionMatrix, ES_PI, 1.0f, 0.0f, 0.0f);
-    
+
+    projectionMatrix = GLKMatrix4RotateX(projectionMatrix, M_PI);
+
     GLKMatrix4 modelViewMatrix = GLKMatrix4Identity;
     modelViewMatrix = GLKMatrix4Scale(modelViewMatrix, 300.0, 300.0, 300.0);
-//    if(_isUsingMotion) {
-        CMDeviceMotion *d = _motionManager.deviceMotion;
-        if (d != nil) {
-            CMAttitude *attitude = d.attitude;
-            
-            if (_referenceAttitude != nil) {
-                [attitude multiplyByInverseOfAttitude:_referenceAttitude];
-            } else {
-                //NSLog(@"was nil : set new attitude", nil);
-                _referenceAttitude = d.attitude;
-            }
-            
-            float cRoll = -fabs(attitude.roll); // Up/Down en landscape
-            float cYaw = attitude.yaw;  // Left/ Right en landscape -> pas besoin de prendre l'opposé
-            float cPitch = attitude.pitch; // Depth en landscape -> pas besoin de prendre l'opposé
-            
-            UIDeviceOrientation orientation = [[UIDevice currentDevice] orientation];
-            if (orientation == UIDeviceOrientationLandscapeRight ){
-                cPitch = cPitch*-1; // correct depth when in landscape right
-            }
-            
-            if (YES) {
-                modelViewMatrix = GLKMatrix4RotateX(modelViewMatrix, cRoll); // Up/Down axis
-                modelViewMatrix = GLKMatrix4RotateY(modelViewMatrix, cPitch);
-                modelViewMatrix = GLKMatrix4RotateZ(modelViewMatrix, cYaw);
-                
-                modelViewMatrix = GLKMatrix4RotateX(modelViewMatrix, ROLL_CORRECTION);
 
-                modelViewMatrix = GLKMatrix4RotateX(modelViewMatrix, _fingerRotationX);
-                modelViewMatrix = GLKMatrix4RotateY(modelViewMatrix, _fingerRotationY);
-                
-                _savedGyroRotationX = cRoll + ROLL_CORRECTION + _fingerRotationX;
-                _savedGyroRotationY = cPitch + _fingerRotationY;
-            }
-            /*
-             else {
-             float deviceOrientationRadians = 0.0f;
-             int mul = 1;
-             UIDeviceOrientation orientation = [[UIDevice currentDevice] orientation];
-             if (orientation == UIDeviceOrientationPortrait) {
-             deviceOrientationRadians = -M_PI_2;
-             mul = -1;
-             }
-             if (orientation == UIDeviceOrientationPortraitUpsideDown) {
-             deviceOrientationRadians = M_PI_2;
-             mul = 1;
-             
-             }
-             
-             GLKMatrix4 baseRotation = GLKMatrix4MakeRotation(deviceOrientationRadians, 1.0f, 0.0f, 0.0f);//up down
-             
-             CMRotationMatrix a = attitude.rotationMatrix; // COL 1 : Gauche droite, COL 2: haut bas
-             GLKMatrix4 deviceMatrix = GLKMatrix4Make(mul*a.m11, mul*a.m12, a.m13, 0.0f,
-             mul*a.m21, mul*a.m22, a.m23, 0.0f,
-             mul*a.m31, mul*a.m32, a.m33, 0.0f,
-             0.0f, 0.0f, 0.0f, 1.0f);
-             deviceMatrix = GLKMatrix4Multiply(baseRotation, deviceMatrix);
-             
-             modelViewMatrix = GLKMatrix4RotateX(modelViewMatrix, _fingerRotationX);
-             modelViewMatrix = GLKMatrix4RotateY(modelViewMatrix, _fingerRotationY);
-             
-             modelViewMatrix = GLKMatrix4Multiply(modelViewMatrix, deviceMatrix);
-             }
-             */
+    CMDeviceMotion *d = _motionManager.deviceMotion;
+    if (d != nil) {
+        CMAttitude *attitude = d.attitude;
+
+        float cRoll = attitude.roll; // Up/Down en landscape
+        //float cRoll = attitude.roll;
+        float cYaw = attitude.yaw;  // Left/ Right en landscape -> pas besoin de prendre l'opposé
+        float cPitch = attitude.pitch; // Depth en landscape -> pas besoin de prendre l'opposé
+        currentYaw = cYaw;
+
+        if (YES) {
+            modelViewMatrix = GLKMatrix4RotateX(modelViewMatrix, cRoll); // Up/Down axis
+            modelViewMatrix = GLKMatrix4RotateY(modelViewMatrix, cPitch);
+            modelViewMatrix = GLKMatrix4RotateZ(modelViewMatrix, cYaw);
+            modelViewMatrix = GLKMatrix4RotateZ(modelViewMatrix, -deltaYaw-deltaFinger);
+
+            modelViewMatrix = GLKMatrix4RotateX(modelViewMatrix, ROLL_CORRECTION);
+
+            modelViewMatrix = GLKMatrix4RotateY(modelViewMatrix, M_PI);
+            modelViewMatrix = GLKMatrix4RotateY(modelViewMatrix, _fingerRotationY);
         }
-        
-//    } else {
-//        modelViewMatrix = GLKMatrix4RotateX(modelViewMatrix, _fingerRotationX);
-//        modelViewMatrix = GLKMatrix4RotateY(modelViewMatrix, _fingerRotationY);
-//    }
-        
+    }
+
     _modelViewProjectionMatrix = GLKMatrix4Multiply(projectionMatrix, modelViewMatrix);
 }
 
 - (void)glkView:(GLKView *)view drawInRect:(CGRect)rect
 {
     [_program use];
-    
+
     glBindVertexArrayOES(_vertexArrayID);
 
     glUniformMatrix4fv(uniforms[UNIFORM_MODELVIEWPROJECTION_MATRIX], 1, 0, _modelViewProjectionMatrix.m);
-    
+
     CVPixelBufferRef pixelBuffer = [self.videoPlayerController retrievePixelBufferToDraw];
 
     CVReturn err;
     if (pixelBuffer != NULL) {
         int frameWidth = (int)CVPixelBufferGetWidth(pixelBuffer);
         int frameHeight = (int)CVPixelBufferGetHeight(pixelBuffer);
-        
+
         if (!_videoTextureCache) {
             NSLog(@"No video texture cache");
             CVPixelBufferRelease(pixelBuffer);
             return;
         }
-        
+
         [self cleanUpTextures];
-        
+
         // Y-plane
         glActiveTexture(GL_TEXTURE0);
         err = CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
@@ -489,13 +454,13 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
         if (err) {
             NSLog(@"Error at CVOpenGLESTextureCacheCreateTextureFromImage %d", err);
         }
-        
+
         glBindTexture(CVOpenGLESTextureGetTarget(_lumaTexture), CVOpenGLESTextureGetName(_lumaTexture));
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        
+
         // UV-plane.
         glActiveTexture(GL_TEXTURE1);
         err = CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
@@ -513,18 +478,18 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
         if (err) {
             NSLog(@"Error at CVOpenGLESTextureCacheCreateTextureFromImage %d", err);
         }
-        
+
         glBindTexture(CVOpenGLESTextureGetTarget(_chromaTexture), CVOpenGLESTextureGetName(_chromaTexture));
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        
+
         CVPixelBufferRelease(pixelBuffer);
-        
+
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-        
+
         glDrawElements ( GL_TRIANGLES, _numIndices,
                         GL_UNSIGNED_SHORT, 0 );
     }
@@ -539,10 +504,10 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
     _program = [[GLProgram alloc]
                 initWithVertexShaderFilename:@"Shader"
                 fragmentShaderFilename:@"Shader"];
-    
+
     [_program addAttribute:@"position"];
     [_program addAttribute:@"texCoord"];
-    
+
     if (![_program link]) {
         NSString *programLog = [_program programLog];
         NSLog(@"Program link log: %@", programLog);
@@ -553,9 +518,9 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
         _program = nil;
         NSAssert(NO, @"Falied to link HalfSpherical shaders");
     }
-    
+
     _vertexTexCoordAttributeIndex = [_program attributeIndex:@"texCoord"];
-    
+
     uniforms[UNIFORM_MODELVIEWPROJECTION_MATRIX] = [_program uniformIndex:@"modelViewProjectionMatrix"];
     uniforms[UNIFORM_Y] = [_program uniformIndex:@"SamplerY"];
     uniforms[UNIFORM_UV] = [_program uniformIndex:@"SamplerUV"];
@@ -598,7 +563,7 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
 
 - (void)handlePinchGesture:(UIPinchGestureRecognizer *)recognizer {
     _overture /= recognizer.scale;
-    
+
     if (_overture > MAX_OVERTURE)
         _overture = MAX_OVERTURE;
     if(_overture<MIN_OVERTURE)
