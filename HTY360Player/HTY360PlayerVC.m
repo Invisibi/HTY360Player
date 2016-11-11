@@ -8,7 +8,6 @@
 
 #import "HTY360PlayerVC.h"
 
-#import "HTYGLKVC.h"
 
 #define ONE_FRAME_DURATION 0.03
 
@@ -18,19 +17,17 @@
 
 NSString * const kTracksKey         = @"tracks";
 NSString * const kPlayableKey		= @"playable";
-//NSString * const kRateKey			= @"rate";
+NSString * const kRateKey			= @"rate";
 NSString * const kCurrentItemKey	= @"currentItem";
 NSString * const kStatusKey         = @"status";
-NSString * const kEmptyBufferKey    = @"playbackBufferEmpty";
 NSString * const kKeepUpKey         = @"playbackLikelyToKeepUp";
 
-//static void *AVPlayerDemoPlaybackViewControllerRateObservationContext = &AVPlayerDemoPlaybackViewControllerRateObservationContext;
+static void *AVPlayerDemoPlaybackViewControllerRateObservationContext = &AVPlayerDemoPlaybackViewControllerRateObservationContext;
 static void *AVPlayerDemoPlaybackViewControllerCurrentItemObservationContext = &AVPlayerDemoPlaybackViewControllerCurrentItemObservationContext;
 static void *AVPlayerDemoPlaybackViewControllerStatusObservationContext = &AVPlayerDemoPlaybackViewControllerStatusObservationContext;
 static void *AVPlayerItemStatusContext = &AVPlayerItemStatusContext;
 
 @interface HTY360PlayerVC () {
-    HTYGLKVC *_glkViewController;
     AVPlayerItemVideoOutput* _videoOutput;
     AVPlayer* _player;
     AVPlayerItem* _playerItem;
@@ -45,7 +42,6 @@ static void *AVPlayerItemStatusContext = &AVPlayerItemStatusContext;
 }
 
 @property (strong, nonatomic) NSURL *videoURL;
-
 @property (strong, nonatomic) IBOutlet UIView *debugView;
 @property (strong, nonatomic) IBOutlet UILabel *rollValueLabel;
 @property (strong, nonatomic) IBOutlet UILabel *yawValueLabel;
@@ -103,6 +99,11 @@ static void *AVPlayerItemStatusContext = &AVPlayerItemStatusContext;
     [_player seekToTime:[_player currentTime]];
 }
 
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
 - (void)dealloc
 {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
@@ -124,10 +125,9 @@ static void *AVPlayerItemStatusContext = &AVPlayerItemStatusContext;
         [self removePlayerTimeObserver];
         [_playerItem removeObserver:self forKeyPath:kStatusKey];
         [_playerItem removeObserver:self forKeyPath:kKeepUpKey];
-        [_playerItem removeObserver:self forKeyPath:kEmptyBufferKey];
         [_playerItem removeOutput:_videoOutput];
         [_player removeObserver:self forKeyPath:kCurrentItemKey];
-//        [_player removeObserver:self forKeyPath:kRateKey];
+        [_player removeObserver:self forKeyPath:kRateKey];
     } @catch(id anException) {
         //do nothing
     }
@@ -242,11 +242,6 @@ static void *AVPlayerItemStatusContext = &AVPlayerItemStatusContext;
                                                                                 name:AVPlayerItemDidPlayToEndTimeNotification
                                                                               object:strongSelf->_playerItem];
                                    
-                                   [[NSNotificationCenter defaultCenter] addObserver:self
-                                                                            selector:@selector(playerItemFailedToPlayToEndTime:)
-                                                                                name:AVPlayerItemFailedToPlayToEndTimeNotification
-                                                                              object:strongSelf->_playerItem];
-                                   
                                    strongSelf->seekToZeroBeforePlay = NO;
                                    
                                    [strongSelf->_playerItem addObserver:self
@@ -259,20 +254,15 @@ static void *AVPlayerItemStatusContext = &AVPlayerItemStatusContext;
                                                 options:NSKeyValueObservingOptionInitial | NSKeyValueObservingOptionNew
                                                 context:AVPlayerDemoPlaybackViewControllerCurrentItemObservationContext];
                                    
-//                                   [strongSelf->_player addObserver:self
-//                                             forKeyPath:kRateKey
-//                                                options:NSKeyValueObservingOptionInitial | NSKeyValueObservingOptionNew
-//                                                context:AVPlayerDemoPlaybackViewControllerRateObservationContext];
+                                   [strongSelf->_player addObserver:self
+                                             forKeyPath:kRateKey
+                                                options:NSKeyValueObservingOptionInitial | NSKeyValueObservingOptionNew
+                                                context:AVPlayerDemoPlaybackViewControllerRateObservationContext];
                                    
                                    [strongSelf->_playerItem addObserver:self
                                                          forKeyPath:kKeepUpKey
                                                             options:NSKeyValueObservingOptionInitial | NSKeyValueObservingOptionNew
                                                             context:AVPlayerDemoPlaybackViewControllerStatusObservationContext];
-                                   
-                                   [strongSelf->_playerItem addObserver:self
-                                                             forKeyPath:kEmptyBufferKey
-                                                                options:NSKeyValueObservingOptionInitial | NSKeyValueObservingOptionNew
-                                                                context:AVPlayerDemoPlaybackViewControllerStatusObservationContext];
                                    
                                    
                                    [strongSelf initScrubberTimer];
@@ -350,8 +340,8 @@ static void *AVPlayerItemStatusContext = &AVPlayerItemStatusContext;
         [_player seekToTime:kCMTimeZero];
     }
     
+    [self updatePlayButton];
     [_player play];
-    [_playButton setImage:[UIImage imageNamed:@"playback_pause"] forState:UIControlStateNormal];
     
     [self scheduleHideControls];
 }
@@ -360,8 +350,8 @@ static void *AVPlayerItemStatusContext = &AVPlayerItemStatusContext;
     if (![self isPlaying])
         return;
     
+    [self updatePlayButton];
     [_player pause];
-    [_playButton setImage:[UIImage imageNamed:@"playback_play"] forState:UIControlStateNormal];
     
     [self scheduleHideControls];
 }
@@ -608,10 +598,9 @@ static void *AVPlayerItemStatusContext = &AVPlayerItemStatusContext;
                         change:(NSDictionary*)change
                        context:(void*)context {
     /* AVPlayerItem "status" property value observer. */
-    if (context == AVPlayerDemoPlaybackViewControllerStatusObservationContext)
-    {
-        if ([path isEqualToString:kStatusKey])
-        {
+    if (context == AVPlayerDemoPlaybackViewControllerStatusObservationContext) {
+        
+        if ([path isEqualToString:kStatusKey]) {
             [self updatePlayButton];
             
             AVPlayerStatus status = [[change objectForKey:NSKeyValueChangeNewKey] integerValue];
@@ -651,23 +640,14 @@ static void *AVPlayerItemStatusContext = &AVPlayerItemStatusContext;
         {
             if (_playerItem.playbackLikelyToKeepUp) {
                 NSLog(@"continue to play");
-                [_player play];
+                [self play];
             }
         }
-        else if ([path isEqualToString:kEmptyBufferKey])
-        {
-            if (_playerItem.playbackBufferEmpty) {
-                NSLog(@"playback buffer empty, continue to play after 1 second.");
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    [_player play];
-                });
-            }
-        }
+
+    } else if (context == AVPlayerDemoPlaybackViewControllerRateObservationContext) {
+        [self updatePlayButton];
+        // NSLog(@"AVPlayerDemoPlaybackViewControllerRateObservationContext");
     }
-//    else if (context == AVPlayerDemoPlaybackViewControllerRateObservationContext) {
-//        [self updatePlayButton];
-//        // NSLog(@"AVPlayerDemoPlaybackViewControllerRateObservationContext");
-//    }
     /* AVPlayer "currentItem" property observer.
      Called when the AVPlayer replaceCurrentItemWithPlayerItem:
      replacement will/did occur. */
@@ -699,15 +679,6 @@ static void *AVPlayerItemStatusContext = &AVPlayerItemStatusContext;
     /* After the movie has played to its end time, seek back to time zero
      to play it again. */
     seekToZeroBeforePlay = YES;
-}
-
-- (void)playerItemFailedToPlayToEndTime:(NSNotification *)notification
-{
-    // play failed, continue to play
-    NSLog(@"playerItemFailedToPlayToEndTime, continue to play after 1 second.");
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [_player play];
-    });
 }
 
 #pragma mark gyro button
