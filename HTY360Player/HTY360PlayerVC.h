@@ -8,13 +8,18 @@
 
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
+#import "HTYGLKVC.h"
 
-@interface HTY360PlayerVC : UIViewController
+@interface HTY360PlayerVC : UIViewController <AVPlayerItemOutputPullDelegate>
 
-@property (strong, nonatomic) NSURL *videoURL;
+@property (strong, nonatomic) IBOutlet UIView *playerControlBackgroundView;
+@property (strong, nonatomic) HTYGLKVC *glkViewController;
 
-- (id)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil url:(NSURL*)url;
+- (instancetype)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil url:(NSURL*)url;
 - (CVPixelBufferRef)retrievePixelBufferToDraw;
 - (void)toggleControls;
+
+- (void)configureGLKView;
+- (void)removeGLKView;
 
 @end
