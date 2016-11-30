@@ -10,10 +10,19 @@
 #import <AVFoundation/AVFoundation.h>
 #import "HTYGLKVC.h"
 
+@protocol HTY360PlayerVCDelegate <NSObject>
+
+- (void)player:(AVPlayer *)player updateProgress:(float)progress;
+- (void)playerReachEnd:(AVPlayer *)player;
+- (void)playerOnClick:(AVPlayer *)player;
+
+@end
+
 @interface HTY360PlayerVC : UIViewController <AVPlayerItemOutputPullDelegate>
 
 @property (strong, nonatomic) IBOutlet UIView *playerControlBackgroundView;
 @property (strong, nonatomic) HTYGLKVC *glkViewController;
+@property (weak, nonatomic, nullable) id<HTY360PlayerVCDelegate> delegate;
 
 - (instancetype)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil url:(NSURL*)url;
 - (CVPixelBufferRef)retrievePixelBufferToDraw;
