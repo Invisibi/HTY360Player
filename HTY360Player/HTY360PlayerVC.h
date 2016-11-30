@@ -12,7 +12,7 @@
 
 @protocol HTY360PlayerVCDelegate <NSObject>
 
-- (void)updatePlayer:(AVPlayer *)player playProgress:(float)progress;
+- (void)player:(AVPlayer *)player updateProgress:(float)progress;
 - (void)playerReachEnd:(AVPlayer *)player;
 - (void)playerOnClick:(AVPlayer *)player;
 

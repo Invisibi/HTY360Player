@@ -516,7 +516,7 @@ static void *AVPlayerItemStatusContext = &AVPlayerItemStatusContext;
         float maxValue = [_progressSlider maximumValue];
         double time = CMTimeGetSeconds([_player currentTime]);
         [_progressSlider setValue:(maxValue - minValue) * time / duration + minValue];
-        [self.delegate updatePlayer:_player playProgress:_progressSlider.value];
+        [self.delegate player:_player updateProgress:_progressSlider.value];
     }
 }
 
