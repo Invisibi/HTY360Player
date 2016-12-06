@@ -84,7 +84,7 @@ GLint uniforms[NUM_UNIFORMS];
 @dynamic view;
 
 - (void)reAnchorToDegree:(float)degree {
-    deltaYaw = currentYaw - degree * M_PI / 180;
+    deltaYaw = currentYaw + degree * M_PI / 180;
     deltaFinger = _fingerRotationY;
 }
 
