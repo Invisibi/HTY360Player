@@ -55,7 +55,6 @@ GLint uniforms[NUM_UNIFORMS];
     float _savedGyroRotationY;
     float currentYaw;
     float deltaYaw;
-    float deltaFinger;
     CGFloat _overture;
 
     int _numIndices;
@@ -72,6 +71,7 @@ GLint uniforms[NUM_UNIFORMS];
 @property (strong, nonatomic) EAGLContext *context;
 @property (strong, nonatomic) GLProgram *program;
 @property (strong, nonatomic) NSMutableArray *currentTouches;
+@property (nonatomic) BOOL isAnimating;
 
 - (void)setupGL;
 - (void)tearDownGL;
@@ -83,9 +83,37 @@ GLint uniforms[NUM_UNIFORMS];
 
 @dynamic view;
 
-- (void)reAnchorToDegree:(float)degree {
-    deltaYaw = currentYaw + degree * M_PI / 180;
-    deltaFinger = _fingerRotationY;
+- (void)reAnchorToDegree:(float)degree isAnimated:(BOOL)isAnimated {
+    __weak CGFloat lastDeltaYaw = deltaYaw;
+    __weak CGFloat endYaw = currentYaw + degree * M_PI / 180 + _fingerRotationY;
+    if (isAnimated) {
+        if (endYaw - lastDeltaYaw > M_PI) {
+            endYaw -= 2 * M_PI;
+        } else if (endYaw - lastDeltaYaw < -M_PI) {
+            endYaw += 2 * M_PI;
+        }
+        __weak typeof(self) weakSelf = self;
+        if (!self.isAnimating) {
+            NSTimer *timer = [NSTimer scheduledTimerWithTimeInterval:0.005 repeats:YES block:^(NSTimer * _Nonnull timer) {
+                weakSelf.isAnimating = YES;
+                if (endYaw - lastDeltaYaw > 0) {
+                    deltaYaw += M_PI / 180;
+                    if (deltaYaw >= endYaw) {
+                        [timer invalidate];
+                        weakSelf.isAnimating = NO;
+                    }
+                } else {
+                    deltaYaw -= M_PI / 180;
+                    if (deltaYaw <= endYaw) {
+                        [timer invalidate];
+                        weakSelf.isAnimating = NO;
+                    }
+                }
+            }];
+        }
+    } else {
+        deltaYaw = endYaw;
+    }
 }
 
 - (void)viewDidLoad {
@@ -116,7 +144,6 @@ GLint uniforms[NUM_UNIFORMS];
     _overture = DEFAULT_OVERTURE;
 
     deltaYaw = 0;
-    deltaFinger = 0;
 
     // Set the default conversion to BT.709, which is the standard for HDTV.
     _preferredConversion = kColorConversion709;
@@ -402,7 +429,7 @@ int esGenSphere ( int numSlices, float radius, float **vertices, float **normals
             modelViewMatrix = GLKMatrix4RotateX(modelViewMatrix, cRoll); // Up/Down axis
             modelViewMatrix = GLKMatrix4RotateY(modelViewMatrix, cPitch);
             modelViewMatrix = GLKMatrix4RotateZ(modelViewMatrix, cYaw);
-            modelViewMatrix = GLKMatrix4RotateZ(modelViewMatrix, -deltaYaw-deltaFinger);
+            modelViewMatrix = GLKMatrix4RotateZ(modelViewMatrix, -deltaYaw);
 
             modelViewMatrix = GLKMatrix4RotateX(modelViewMatrix, ROLL_CORRECTION);
 
